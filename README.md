@@ -8,7 +8,7 @@ A VHDL-based UART system that receives a byte, increments it, and sends it back.
 2) **Reliable RX**: Implements center-sampling and metastability synchronizers.
 3) **Visual Debugging**: The top module uses the 7-segment display to show the hex value of processed data.
 
-## :thinking_face:How to use
+## :thinking: How to use
 
 1) Set CLK_PER_BIT to match your baud rate (default: 434 for 230400 bps @ 100MHz).
 2) Connect to the Basys 3 via USB-UART.
