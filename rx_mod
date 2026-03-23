@@ -1,0 +1,115 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;
+
+
+entity rx_mod is
+	generic	(
+		-- Baud rate : 230400
+		-- CLK_PER_BIT = 100MHZ / 230400 = 434	
+		CLK_PER_BIT : integer := 434
+	);
+	port (
+		clk : in std_logic;
+		rst : in std_logic;
+		i_rx : in std_logic;
+		data_byte : out std_logic_vector (7 downto 0);
+		data_avail : out std_logic
+	);
+end rx_mod;
+
+architecture receiver of rx_mod is
+
+	type state_type is (IDLE, START_BIT, GET_BIT, STOP_BIT);
+	signal current_state : state_type;
+	signal bit_index : integer range 0 to 7 := 0;
+	signal count : integer range 0 to CLK_PER_BIT := 0;
+	signal rx_buffer, rx : std_logic := '1';
+	signal data_avail_reg : std_logic := '0';
+	signal data_byte_reg : std_logic_vector (7 downto 0) := (others => '0');
+
+begin
+	process(clk, rst)
+	begin
+		if rst = '1' then
+			current_state <= IDLE;
+			data_avail_reg <= '0';
+			data_byte_reg <= (others => '0');
+			count <= 0;
+			bit_index <= 0;
+			
+		elsif clk'event and clk = '1' then	
+		
+			rx_buffer <= i_rx;
+			rx <= rx_buffer;		
+			case (current_state) is
+				when IDLE =>
+					data_avail_reg <= '0';
+					-- Wait till rx line goes zero
+					if rx = '0' then 
+						count <= 0;
+						current_state <= START_BIT;
+					else
+						current_state <= IDLE;					
+					end if; 
+				
+				when START_BIT =>
+					-- wait for 1/2 CLK_PER_BIT = 434 / 2 = 217 to reach the center od start bit
+					-- Check if rx line is still zero
+					if count = (CLK_PER_BIT / 2) - 1 then
+						if rx = '0' then
+							current_state <= GET_BIT;
+							count <= 0;	
+							bit_index <= 0;
+						else
+							current_state <= IDLE;
+						end if;
+					else
+						count <= count + 1;
+					end if;
+					
+				when GET_BIT =>
+					-- increment bit_index from 0 to 7 bit for the data
+					if count = CLK_PER_BIT -1 then
+						count <= 0;
+						-- wait 1 full CLK_PER_BIT (434)to reach center of next bit 
+						-- store the data into data_byte_reg
+						data_byte_reg (bit_index) <= rx;
+						if bit_index = 7 then
+							bit_index <= 0;
+							current_state <= STOP_BIT;
+						else 
+							bit_index <= bit_index + 1;					
+						end if;
+					else
+						count <= count + 1;
+					end if;
+					
+				when STOP_BIT =>
+					-- wait 1 full CLK_PER_BIT (434) to reach center of next bit 
+					if count = CLK_PER_BIT - 1 then
+						count <= 0;
+						-- check if the rx line has gone high
+						-- set the data_avail_reg high
+						if rx = '1' then
+							current_state <= IDLE;
+							data_avail_reg <= '1';
+						else
+						-- drop the data_avail_reg and return IDLE to resynchronious
+						data_avail_reg <= '0';
+						current_state <= IDLE;
+						end if;
+					else
+						count <= count + 1;
+					end if;
+				
+				when others =>
+					current_state <= IDLE;
+			end case;
+		end if;
+		
+	end process;
+
+	data_avail <= data_avail_reg;
+	data_byte <= data_byte_reg;
+end receiver;

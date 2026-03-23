@@ -1,0 +1,112 @@
+library IEEE; 
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;
+
+entity tx_mod is
+    generic (
+        -- Baud rate : 230400
+        -- CLK_PER_BIT = 100MHZ / 230400 = 434	
+        CLK_PER_BIT : integer := 434
+    );
+    port (
+        clk : in std_logic;
+        rst : in std_logic;
+        data_byte : in std_logic_vector (7 downto 0);
+        data_avail : in std_logic;
+        active_bit : out std_logic;
+        done_bit : out std_logic;
+        o_tx : out std_logic
+    );
+end tx_mod;
+
+architecture transmitter of tx_mod is
+
+    type state_type is (IDLE, START_BIT, SEND_BIT, STOP_BIT);
+    signal current_state : state_type;
+    signal bit_index : integer range 0 to 7 := 0;
+    signal count : integer range 0 to CLK_PER_BIT := 0;
+    signal tx_reg : std_logic := '1';
+    signal active_bit_reg : std_logic := '0';
+    signal done_bit_reg : std_logic := '0';
+    signal data_byte_reg : std_logic_vector (7 downto 0) := (others => '0');
+
+begin
+
+    TX_PROC: process (clk, rst)
+    begin
+
+        if rst = '1' then
+            current_state <= IDLE;
+            tx_reg <= '1';
+            active_bit_reg <= '0';
+            done_bit_reg <= '0';
+            data_byte_reg <= (others => '0');
+            count <= 0;
+            bit_index <= 0;
+            
+        elsif clk'event and clk = '1' then	
+            
+            case (current_state) is
+                when IDLE =>
+                    tx_reg <= '1';
+                    done_bit_reg <= '0';
+                    if data_avail = '1' then
+                        data_byte_reg <= data_byte;
+                        current_state <= START_BIT;
+                        active_bit_reg <= '1';
+                    else
+                        current_state <= IDLE;
+                    end if;
+                    
+                when START_BIT =>
+                    tx_reg <= '0';
+                    if count = CLK_PER_BIT - 1 then
+                        count <= 0;
+                        current_state <= SEND_BIT;
+                    else	
+                        count <= count + 1;
+                        current_state <= START_BIT;
+                    end if;
+                    
+                when SEND_BIT =>
+                    tx_reg <= data_byte_reg (bit_index);
+                    if count = CLK_PER_BIT - 1 then
+                        -- wait for CLK_PER_BIT and send data
+                        -- Keep the active_bit_reg high 
+                        count <= 0;
+                        if bit_index = 7 then
+                            bit_index <= 0;
+                            current_state <= STOP_BIT;
+                        else	
+                            bit_index <= bit_index + 1; 
+                        end if;
+                        
+                    else
+                        count <= count + 1;
+                        current_state <= SEND_BIT;
+                    end if;
+                    
+                when STOP_BIT =>
+                    tx_reg <= '1';
+                    if count = CLK_PER_BIT - 1 then
+                        count <= 0;
+                        active_bit_reg <= '0';
+                        done_bit_reg <= '1';
+                        current_state <= IDLE;
+                    else	
+                        count <= count + 1;
+                        current_state <= STOP_BIT;
+                    end if;
+                    
+                when others =>
+                    current_state <= IDLE;
+            end case;
+        end if;
+        
+    end process;
+
+    o_tx <= tx_reg;
+    done_bit <= done_bit_reg;
+    active_bit <= active_bit_reg;
+
+end transmitter;

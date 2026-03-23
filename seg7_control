@@ -1,0 +1,74 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;
+
+entity seg7_control is
+    port (
+        clk : in std_logic;
+        rst : in std_logic;
+        data_byte : in std_logic_vector (7 downto 0);
+        seg : out std_logic_vector (6 downto 0);
+        digit : out std_logic_vector (3 downto 0)
+    );
+end seg7_control;
+
+architecture segment of seg7_control is
+
+    signal digit_timer  : std_logic_vector (16 downto 0) := (others => '0');
+    signal digit_select : std_logic := '0';
+    signal current_data : std_logic_vector (3 downto 0);
+
+begin
+
+    -- Refresh Rate Generator
+    -- 100MHz / 100000 = 1KHz refresh rate for multiplexing
+    REFRESH_RATE_PROC : process (clk, rst)
+    begin
+        if rst = '1' then
+            digit_timer <= (others => '0');
+            digit_select <= '0';
+        elsif rising_edge(clk) then
+            if digit_timer = 99999 then
+                digit_timer <= (others => '0');
+                digit_select <= not digit_select;
+            else
+                digit_timer <= digit_timer + 1;
+            end if;
+        end if;
+    end process;
+    
+    -- Multiplexer
+    -- picks which half of the byte to show
+    MULTIPLEXER_PROC : process (digit_select, data_byte)
+    begin
+        if digit_select = '0' then
+            digit <= "1110"; -- first digit from the right on the 4-digit display
+            current_data <= data_byte(3 downto 0);
+        else
+            digit <= "1101"; -- Second digit from the right on the 4-digit display
+            current_data <= data_byte(7 downto 4);
+        end if;
+    end process;
+    
+    -- segment Decoder
+    -- translates 4-bit hex to 7-segment patterns
+    with current_data select
+        seg <= "1000000" when "0000", -- 0
+               "1111001" when "0001", -- 1
+               "0100100" when "0010", -- 2
+               "0110000" when "0011", -- 3
+               "0011001" when "0100", -- 4
+               "0010010" when "0101", -- 5
+               "0000010" when "0110", -- 6
+               "1111000" when "0111", -- 7
+               "0000000" when "1000", -- 8
+               "0010000" when "1001", -- 9
+               "0001000" when "1010", -- A
+               "0000011" when "1011", -- B
+               "1000110" when "1100", -- C
+               "0100001" when "1101", -- D
+               "0000110" when "1110", -- E
+               "0001110" when "1111", -- F
+               "1111111" when others; -- Blank
+
+end segment;

@@ -1,0 +1,94 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;
+
+
+entity top is
+	port (
+		clk : in std_logic;
+		rst : in std_logic;
+		RX : in std_logic;
+		TX : out std_logic;
+		seg : out std_logic_vector (6 downto 0);
+		digit : out std_logic_vector (3 downto 0);
+		active_flag : out std_logic;
+		done_flag : out std_logic
+	);
+end top;
+
+architecture Behavioral of top is
+
+    constant clk_freq : integer := 100000000; -- 100 MHz
+    constant baud_rate : integer := 230400;
+    constant clk_per_bit_value : integer := clk_freq / baud_rate; -- 100MHz / 230400 baud rate
+
+    component tx_mod is
+        generic ( CLK_PER_BIT : integer := clk_per_bit_value );
+        port (
+            clk : in std_logic;
+            rst : in std_logic;
+            data_byte : in std_logic_vector (7 downto 0);
+            data_avail : in std_logic;
+            active_bit : out std_logic;
+            done_bit : out std_logic;
+            o_tx : out std_logic	
+        );
+    end component;
+
+    component rx_mod is
+        generic ( CLK_PER_BIT : integer := clk_per_bit_value );
+        port (
+            clk : in std_logic;
+            rst : in std_logic;
+            I_RX : in std_logic;
+            data_byte : out std_logic_vector (7 downto 0);
+            data_avail : out std_logic
+        );
+    end component;
+
+    component seg7_control is
+        port (
+            clk : in std_logic;
+            rst : in std_logic;
+            data_byte : in std_logic_vector (7 downto 0);
+            seg : out std_logic_vector (6 downto 0);
+            digit : out std_logic_vector (3 downto 0)
+        );
+    end component;
+
+    signal data_avail_wire : std_logic;
+    signal data_byte_wire : std_logic_vector (7 downto 0); 
+    signal data_byte_plus_one : std_logic_vector (7 downto 0);
+
+begin
+
+    U_RX : rx_mod generic map ( CLK_PER_BIT => clk_per_bit_value )
+                port map (
+                        clk => clk,
+                        rst => 	rst,
+                        I_RX => RX,
+                        data_avail => data_avail_wire,
+                        data_byte => data_byte_wire
+                        );
+
+    U_TX : tx_mod generic map (CLK_PER_BIT => clk_per_bit_value)
+                Port map (
+                        clk => clk,
+                        rst => rst,
+                        data_avail => data_avail_wire,
+                        data_byte => data_byte_plus_one,
+                        o_tx => TX,
+                        active_bit => active_flag,
+                        done_bit => done_flag
+                        );
+                            
+    U_seg7 : seg7_control port map (
+                                clk => clk,
+                                rst => rst,
+                                data_byte => data_byte_plus_one,
+                                seg => seg,
+                                digit => digit
+                                );
+
+    data_byte_plus_one <= data_byte_wire + '1';
+end Behavioral;
